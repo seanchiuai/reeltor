@@ -6,6 +6,7 @@ import { initDatabase } from "./db.js";
 import { createMcpServer, startStdioTransport, startHttpTransport } from "./mcp-server.js";
 import { startIngestServer } from "./ingest.js";
 import { normalizeReelUrl } from "./ingest.js";
+import { startWatcher } from "./watcher.js";
 import { insertReel, getReelByUrl } from "./db.js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -34,6 +35,7 @@ program
   .description("Start the ingest server and MCP server")
   .option("--stdio", "Run MCP server via stdio transport (for Claude Desktop)")
   .option("--http", "Run MCP server via HTTP transport (for ChatGPT/remote clients)")
+  .option("--watch", "Watch Instagram DMs for new reels via Chrome DevTools")
   .option("--port <number>", "Ingest server port", "7433")
   .action(async (opts) => {
     const config = loadConfig();
@@ -42,6 +44,13 @@ program
 
     // Start ingest HTTP server
     startIngestServer(db, ingestPort);
+
+    // Start DM watcher if requested
+    if (opts.watch) {
+      startWatcher(config.chrome_port, ingestPort).catch((err) => {
+        console.error("Watcher failed to start:", err);
+      });
+    }
 
     if (opts.stdio) {
       console.log("Starting MCP server (stdio transport)...");

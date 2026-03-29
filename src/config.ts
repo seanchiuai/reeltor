@@ -7,6 +7,7 @@ export interface ReeltorConfig {
   anthropic_api_key: string;
   ingest_port: number;
   db_path: string;
+  chrome_port: number;
 }
 
 const REELTOR_DIR = join(homedir(), ".reeltor");
@@ -18,6 +19,7 @@ const DEFAULT_CONFIG: ReeltorConfig = {
   anthropic_api_key: "",
   ingest_port: 7433,
   db_path: DEFAULT_DB_PATH,
+  chrome_port: 9222,
 };
 
 export function getReeltorDir(): string {
