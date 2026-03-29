@@ -18,6 +18,7 @@ export function initDatabase(dbPath: string): Database.Database {
   sqliteVec.load(db);
 
   createSchema(db);
+  migrateSchema(db);
   return db;
 }
 
@@ -28,6 +29,7 @@ function createSchema(db: Database.Database): void {
       url TEXT UNIQUE NOT NULL,
       transcript TEXT,
       description TEXT,
+      extracted_json TEXT,
       collection TEXT,
       status TEXT NOT NULL DEFAULT 'processing',
       error_message TEXT,
@@ -42,7 +44,9 @@ function createSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS embedding_chunks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       reel_id TEXT NOT NULL REFERENCES reels(id) ON DELETE CASCADE,
-      chunk_text TEXT NOT NULL
+      chunk_text TEXT NOT NULL,
+      chunk_index INTEGER,
+      source TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_embedding_chunks_reel_id ON embedding_chunks(reel_id);
@@ -51,6 +55,28 @@ function createSchema(db: Database.Database): void {
       embedding float[${EMBEDDING_DIMENSIONS}]
     );
   `);
+}
+
+function migrateSchema(db: Database.Database): void {
+  // Add extracted_json column if missing (for existing DBs created before this column existed)
+  const reelColumns = db.prepare("PRAGMA table_info(reels)").all() as { name: string }[];
+  const reelColumnNames = new Set(reelColumns.map((c) => c.name));
+
+  if (!reelColumnNames.has("extracted_json")) {
+    db.exec("ALTER TABLE reels ADD COLUMN extracted_json TEXT");
+  }
+
+  // Add chunk_index and source columns to embedding_chunks if missing
+  const chunkColumns = db.prepare("PRAGMA table_info(embedding_chunks)").all() as { name: string }[];
+  const chunkColumnNames = new Set(chunkColumns.map((c) => c.name));
+
+  if (!chunkColumnNames.has("chunk_index")) {
+    db.exec("ALTER TABLE embedding_chunks ADD COLUMN chunk_index INTEGER");
+  }
+
+  if (!chunkColumnNames.has("source")) {
+    db.exec("ALTER TABLE embedding_chunks ADD COLUMN source TEXT");
+  }
 }
 
 // --- Query helpers ---
@@ -78,11 +104,11 @@ export function insertReel(
 export function updateReelComplete(
   db: Database.Database,
   id: string,
-  data: { transcript: string | null; description: string | null }
+  data: { transcript: string | null; description: string | null; extractedJson?: unknown }
 ): void {
   db.prepare(
-    `UPDATE reels SET transcript = ?, description = ?, status = 'complete' WHERE id = ?`
-  ).run(data.transcript, data.description, id);
+    `UPDATE reels SET transcript = ?, description = ?, extracted_json = ?, status = 'complete', error_message = NULL WHERE id = ?`
+  ).run(data.transcript, data.description, data.extractedJson ? JSON.stringify(data.extractedJson) : null, id);
 }
 
 export function updateReelError(
